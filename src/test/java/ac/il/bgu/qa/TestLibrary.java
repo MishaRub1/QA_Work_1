@@ -16,6 +16,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
+import ac.il.bgu.qa.errors.BookAlreadyBorrowedException;
+import ac.il.bgu.qa.errors.BookNotFoundException;
+import ac.il.bgu.qa.errors.UserNotRegisteredException;
 import ac.il.bgu.qa.services.DatabaseService;
 import ac.il.bgu.qa.services.NotificationService;
 import ac.il.bgu.qa.services.ReviewService;
@@ -156,7 +159,7 @@ public class TestLibrary {
     }
 
     @Test
-    void GivenValidBook_WhenAddBook_ThenBookAddedToDatabase() {
+    void GivenValidBook_WhenAddBook_ThenBookIsSavedInDatabase() {
         // Act
         library.addBook(book);
 
@@ -200,4 +203,89 @@ public class TestLibrary {
         // Assert
         verify(databaseService).addBook(VALID_ISBN, book);
     }
-}
+
+    // borrowBook tests
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = { "123456789012", "12345678901234", "97803m6406157", "9780306406158"})
+    void GivenInvalidIsbn_WhenBorrowBook_ThenThrowIllegalArgumentException(String invalidIsbn) {
+        // Act
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.borrowBook(invalidIsbn, VALID_USER_ID));
+
+        // Assert
+        assertEquals("Invalid ISBN.", exception.getMessage());
+    }
+
+    @Test
+    void GivenBookNotFound_WhenBorrowBook_ThenThrowBookNotFoundException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(null);
+
+        // Act
+        BookNotFoundException exception = assertThrows(BookNotFoundException.class, () -> library.borrowBook(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        assertEquals("Book not found!", exception.getMessage());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = { "12345678901", "1234567890123", "97803m640615"})
+    void GivenInvalidUserId_WhenBorrowBook_ThenThrowIllegalArgumentException(String invalidUserId) {
+        // Arrange
+        when(user.getId()).thenReturn(invalidUserId);
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        // Act
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.borrowBook(VALID_ISBN, invalidUserId));
+
+        // Assert
+        assertEquals("Invalid user Id.", exception.getMessage());
+    }
+
+    @Test
+    void GivenUserNotRegistered_WhenBorrowBook_ThenThrowUserNotRegisteredException() {
+        // Arrange
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(null);
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+
+        // Act
+        UserNotRegisteredException exception = assertThrows(UserNotRegisteredException.class, () -> library.borrowBook(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        assertEquals("User not found!", exception.getMessage());
+        verify(databaseService, never()).borrowBook(anyString(), anyString());
+        verify(book, never()).borrow();
+    }
+
+    @Test
+    void GivenBookAlreadyBorrowed_WhenBorrowBook_ThenThrowBookAlreadyBorrowedException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(book.isBorrowed()).thenReturn(true);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+
+        // Act
+        BookAlreadyBorrowedException exception = assertThrows(BookAlreadyBorrowedException.class, () -> library.borrowBook(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        assertEquals("Book is already borrowed!", exception.getMessage());
+        verify(databaseService, never()).borrowBook(anyString(), anyString());
+        verify(book, never()).borrow();
+    }
+
+    @Test
+    void GivenValidBookAndUserId_WhenBorrowBook_ThenBookIsBorrowed() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(book.isBorrowed()).thenReturn(false);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+
+        // Act
+        library.borrowBook(VALID_ISBN, VALID_USER_ID);
+
+        // Assert
+        verify(databaseService).borrowBook(VALID_ISBN, VALID_USER_ID);
+        verify(book).borrow();
+    }
+}   
