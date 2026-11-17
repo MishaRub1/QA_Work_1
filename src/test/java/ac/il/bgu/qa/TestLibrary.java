@@ -34,7 +34,7 @@ public class TestLibrary {
     @Mock
     private DatabaseService databaseService;
     @Mock
-    private ReviewService reviewService;;
+    private ReviewService reviewService;
     @Mock
     private NotificationService notificationService;
     @Mock
