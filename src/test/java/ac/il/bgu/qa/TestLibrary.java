@@ -408,4 +408,26 @@ public class TestLibrary {
         verify(databaseService).returnBook(VALID_ISBN);
         verify(book).returnBook();
     }
+
+    // ====================================================== getBookByISBN tests ======================================================
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
+    void GivenInvalidIsbn_WhenGetBookByISBN_ThenThrowIllegalArgumentException(String invalidIsbn) {
+        // Act
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.getBookByISBN(invalidIsbn, VALID_USER_ID));
+
+        // Assert
+        assertEquals("Invalid ISBN.", exception.getMessage());
+    }
+
+    
+
+
+
+
+
+
+
+
 }
