@@ -18,6 +18,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
 
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
@@ -488,5 +489,19 @@ public class TestLibrary {
 
         // Assert
         verify(spyLibrary).notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID);
+    }
+
+    @Test
+    void GivenNotificationFails_WhenGetBookByISBN_ThenReturnBook() {
+        // Arrange
+        Library spyLibrary = spy(library);
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        doThrow(new RuntimeException()).when(spyLibrary).notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID);
+
+        // Act
+        Book result = spyLibrary.getBookByISBN(VALID_ISBN, VALID_USER_ID);
+
+        // Assert
+        assertSame(book, result);
     }
 }
