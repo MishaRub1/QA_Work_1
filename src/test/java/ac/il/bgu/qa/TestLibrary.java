@@ -2,6 +2,7 @@ package ac.il.bgu.qa;
 
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,8 +12,14 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.booleanThat;
+import static org.mockito.ArgumentMatchers.eq;
+
 import org.mockito.Mock;
+
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
@@ -421,13 +428,65 @@ public class TestLibrary {
         assertEquals("Invalid ISBN.", exception.getMessage());
     }
 
-    
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"12345678901", "1234567890123", "12345678901a"})
+    void GivenInvalidUserId_WhenGetBookByISBN_ThenThrowIllegalArgumentException(String invalidUserId) {
+        // Act
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.getBookByISBN(VALID_ISBN, invalidUserId));
 
+        // Assert
+        assertEquals("Invalid user Id.", exception.getMessage());
+    }
 
+    @Test
+    void GivenBookNotFound_WhenGetBookByISBN_ThenThrowBookNotFoundException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(null);
 
+        // Act
+        BookNotFoundException exception = assertThrows(BookNotFoundException.class, () -> library.getBookByISBN(VALID_ISBN, VALID_USER_ID));
 
+        // Assert
+        assertEquals("Book not found!", exception.getMessage());
+    }
 
+    @Test
+    void GivenBookAlreadyBorrowed_WhenGetBookByISBN_ThenThrowBookAlreadyBorrowedException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(book.isBorrowed()).thenReturn(true);
 
+        // Act
+        BookAlreadyBorrowedException exception = assertThrows(BookAlreadyBorrowedException.class, () -> library.getBookByISBN(VALID_ISBN, VALID_USER_ID));
 
+        // Assert
+        assertEquals("Book was already borrowed!", exception.getMessage());
+    }
 
+    @Test
+    void GivenValidIsbnAndUserId_WhenGetBookByISBN_ThenReturnBook() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+
+        // Act
+        Book result = library.getBookByISBN(VALID_ISBN, VALID_USER_ID);
+
+        // Assert
+        assertSame(book, result);
+    }
+
+    @Test
+    void GivenValidIsbnAndUserId_WhenGetBookByISBN_ThenNotifyUserWithBookReviews() {
+        // Arrange
+        Library spyLibrary = spy(library);
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        doNothing().when(spyLibrary).notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID);
+
+        // Act
+        spyLibrary.getBookByISBN(VALID_ISBN, VALID_USER_ID);
+
+        // Assert
+        verify(spyLibrary).notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID);
+    }
 }
