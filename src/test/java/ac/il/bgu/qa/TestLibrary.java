@@ -17,11 +17,13 @@ import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
 
 import ac.il.bgu.qa.errors.BookAlreadyBorrowedException;
+import ac.il.bgu.qa.errors.BookNotBorrowedException;
 import ac.il.bgu.qa.errors.BookNotFoundException;
 import ac.il.bgu.qa.errors.UserNotRegisteredException;
 import ac.il.bgu.qa.services.DatabaseService;
 import ac.il.bgu.qa.services.NotificationService;
 import ac.il.bgu.qa.services.ReviewService;
+
 public class TestLibrary {
 
     // Valid default values
@@ -70,8 +72,7 @@ public class TestLibrary {
         mocks.close();
     }
 
-    // addBook tests
-
+    // ====================================================== addBook tests ======================================================
     @Test
     void GivenNullBook_WhenAddBook_ThenThrowIllegalArgumentException() {
         // Act
@@ -85,7 +86,7 @@ public class TestLibrary {
     void GivenNullIsbn_WhenAddBook_ThenThrowIllegalArgumentException() {
         // Arrange
         when(book.getISBN()).thenReturn(null);
-        
+
         // Act
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.addBook(book));
 
@@ -94,7 +95,7 @@ public class TestLibrary {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = { "123456789012", "12345678901234", "97803m6406157", "9780306406158"})
+    @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
     void GivenInvalidIsbn_WhenAddBook_ThenThrowIllegalArgumentException(String invalidIsbn) {
         // Arrange
         when(book.getISBN()).thenReturn(invalidIsbn);
@@ -105,7 +106,7 @@ public class TestLibrary {
         // Assert
         assertEquals("Invalid ISBN.", exception.getMessage());
     }
-    
+
     @ParameterizedTest
     @NullAndEmptySource
     void GivenNullOrEmptyTitle_WhenAddBook_ThenThrowIllegalArgumentException(String title) {
@@ -121,7 +122,7 @@ public class TestLibrary {
 
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = { "-nitzan", "Nitzan Zagur*", "Nitzan k* k** Zaguri", "Nitz''an Zaguri", "Nitzan Z..aguri", "Nitz--an Zaguri", "Nitzan  Zaguri"})
+    @ValueSource(strings = {"-nitzan", "Nitzan Zagur*", "Nitzan ka k** Zaguri", "Nitz''an Zaguri", "Nitzan Z..aguri", "Nitz--an Zaguri", "Nitzan  Zaguri"})
     void GivenInvalidAuthor_WhenAddBook_ThenThrowIllegalArgumentException(String invalidAuthor) {
         // Arrange
         when(book.getAuthor()).thenReturn(invalidAuthor);
@@ -204,11 +205,10 @@ public class TestLibrary {
         verify(databaseService).addBook(VALID_ISBN, book);
     }
 
-    // borrowBook tests
-
+    // ====================================================== borrowBook tests ======================================================
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = { "123456789012", "12345678901234", "97803m6406157", "9780306406158"})
+    @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
     void GivenInvalidIsbn_WhenBorrowBook_ThenThrowIllegalArgumentException(String invalidIsbn) {
         // Act
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.borrowBook(invalidIsbn, VALID_USER_ID));
@@ -231,10 +231,9 @@ public class TestLibrary {
 
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = { "12345678901", "1234567890123", "97803m640615"})
+    @ValueSource(strings = {"12345678901", "1234567890123", "97803m640615"})
     void GivenInvalidUserId_WhenBorrowBook_ThenThrowIllegalArgumentException(String invalidUserId) {
         // Arrange
-        when(user.getId()).thenReturn(invalidUserId);
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
         // Act
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.borrowBook(VALID_ISBN, invalidUserId));
@@ -288,4 +287,57 @@ public class TestLibrary {
         verify(databaseService).borrowBook(VALID_ISBN, VALID_USER_ID);
         verify(book).borrow();
     }
-}   
+
+    // ====================================================== returnBook tests ======================================================
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
+    void GivenInvalidIsbn_WhenReturnBook_ThenThrowIllegalArgumentException(String invalidIsbn) {
+        // Act
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.returnBook(invalidIsbn));
+
+        // Assert
+        assertEquals("Invalid ISBN.", exception.getMessage());
+    }
+
+    @Test
+    void GivenBookNotFound_WhenReturnBook_ThenThrowBookNotFoundException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(null);
+
+        // Act
+        BookNotFoundException exception = assertThrows(BookNotFoundException.class, () -> library.returnBook(VALID_ISBN));
+
+        // Assert
+        assertEquals("Book not found!", exception.getMessage());
+    }
+
+    @Test
+    void GivenBookNotBorrowed_WhenReturnBook_ThenThrowBookNotBorrowedException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(book.isBorrowed()).thenReturn(false);
+
+        // Act
+        BookNotBorrowedException exception = assertThrows(BookNotBorrowedException.class, () -> library.returnBook(VALID_ISBN));
+
+        // Assert
+        assertEquals("Book wasn't borrowed!", exception.getMessage());
+        verify(databaseService, never()).returnBook(anyString());
+        verify(book, never()).returnBook();
+    }
+
+    @Test
+    void GivenBorrowedBook_WhenReturnBook_ThenBookIsReturned() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(book.isBorrowed()).thenReturn(true);
+
+        // Act
+        library.returnBook(VALID_ISBN);
+
+        // Assert
+        verify(databaseService).returnBook(VALID_ISBN);
+        verify(book).returnBook();
+    }
+}
