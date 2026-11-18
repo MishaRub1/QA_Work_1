@@ -73,29 +73,26 @@ public class TestLibrary {
         mocks.close();
     }
 
-    // ---------- registerUser ----------
-
+    // ====================================================== registerUser tests ======================================================
     @Test
-    public void GivenValidUnregisteredUser_WhenRegisterUser_ThenUserIsRegistered() {
-        // Arrange: the user is valid and getUserById returns null by default,
-        // meaning the user is not registered yet
-
+    void GivenValidUnregisteredUser_WhenRegisterUser_ThenUserIsRegistered() {
         // Act
         library.registerUser(user);
-        
+
         // Assert
         verify(databaseService).registerUser(VALID_USER_ID, user);
     }
-    
+
     @Test
-    public void GivenNullUser_WhenRegisterUser_ThenThrowInvalidUser() {
+    void GivenNullUser_WhenRegisterUser_ThenThrowIllegalArgumentException() {
+        // Act + Assert
         assertRegisterUserFails(null, "Invalid user.");
     }
-    
+
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {"", "12345678901", "1234567890123", "12345678901a", "123456 89012", "123456-89012"})
-    public void GivenInvalidUserId_WhenRegisterUser_ThenThrowInvalidUserId(String invalidId) {
+    void GivenInvalidUserId_WhenRegisterUser_ThenThrowIllegalArgumentException(String invalidId) {
         // Arrange
         when(user.getId()).thenReturn(invalidId);
 
@@ -105,7 +102,7 @@ public class TestLibrary {
 
     @ParameterizedTest
     @NullAndEmptySource
-    public void GivenInvalidUserName_WhenRegisterUser_ThenThrowInvalidUserName(String invalidName) {
+    void GivenInvalidUserName_WhenRegisterUser_ThenThrowIllegalArgumentException(String invalidName) {
         // Arrange
         when(user.getName()).thenReturn(invalidName);
 
@@ -114,23 +111,23 @@ public class TestLibrary {
     }
 
     @Test
-    public void GivenNullNotificationService_WhenRegisterUser_ThenThrowInvalidNotificationService() {
+    void GivenNullNotificationService_WhenRegisterUser_ThenThrowIllegalArgumentException() {
         // Arrange
         when(user.getNotificationService()).thenReturn(null);
 
         // Act + Assert
         assertRegisterUserFails(user, "Invalid notification service.");
     }
-    
+
     @Test
-    public void GivenUserIdAlreadyExists_WhenRegisterUser_ThenThrowUserAlreadyExists() {
+    void GivenUserIdAlreadyExists_WhenRegisterUser_ThenThrowIllegalArgumentException() {
         // Arrange
         when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
 
         // Act + Assert
         assertRegisterUserFails(user, "User already exists.");
     }
-    
+
     /**
      * Calls registerUser, asserts it throws IllegalArgumentException with the expected message,
      * and asserts that nothing was registered in the database.
@@ -305,6 +302,7 @@ public class TestLibrary {
     void GivenInvalidUserId_WhenBorrowBook_ThenThrowIllegalArgumentException(String invalidUserId) {
         // Arrange
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+
         // Act
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.borrowBook(VALID_ISBN, invalidUserId));
 
