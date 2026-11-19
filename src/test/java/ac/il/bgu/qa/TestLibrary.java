@@ -2,7 +2,9 @@ package ac.il.bgu.qa;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,8 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
-import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -44,11 +46,13 @@ public class TestLibrary {
     private static final String VALID_ISBN = "9780306406157";
     private static final String VALID_ISBN_WITH_HYPHENS = "978-0-306-40615-7";
     private static final String VALID_ISBN_WITH_CHECK_DIGIT_ZERO = "9780000000200";
+    private static final String VALID_REAL_WORLD_ISBN = "9780134685991";
     private static final String VALID_TITLE = "Harry Potter and the Philosopher's Stone";
     private static final String VALID_AUTHOR = "J.K. Rowling";
     private static final String VALID_USER_ID = "123456789012";
     private static final String VALID_USER_NAME = "Israel Israeli";
-    private static final List<String> VALID_REVIEWS = List.of("Great book", "Loved it");
+    // Arrays.asList (and not List.of) keeps the file compatible with the Java 8 level set in pom.xml
+    private static final List<String> VALID_REVIEWS = Arrays.asList("Great book", "Loved it");
     private static final String EXPECTED_NOTIFICATION = "Reviews for '" + VALID_TITLE + "':\nGreat book\nLoved it";
 
     // Test doubles (mocks)
@@ -94,6 +98,35 @@ public class TestLibrary {
         mocks.close();
     }
 
+    // ==================== Shared test data ====================
+    /**
+     * Invalid ISBN inputs shared by every method that validates an ISBN. null
+     * and "" are supplied separately by @NullAndEmptySource.
+     */
+    static Stream<String> invalidIsbns() {
+        return Stream.of(
+                "123456789012", // 12 digits: one below the required length
+                "12345678901234", // 14 digits: one above the required length
+                "97803064061570", // a valid ISBN followed by an extra digit
+                "97803m6406157", // 13 characters, one of them a letter
+                "978 0306406157", // a space as separator (only hyphens are removed)
+                "9780306406158", // check digit one above the correct one (7)
+                "9780306406156");    // check digit one below the correct one (7)
+    }
+
+    /**
+     * Invalid user Id inputs shared by every method that validates a user Id.
+     * null and "" are supplied separately by @NullAndEmptySource.
+     */
+    static Stream<String> invalidUserIds() {
+        return Stream.of(
+                "12345678901", // 11 digits: one below the required length
+                "1234567890123", // 13 digits: one above the required length
+                "12345678901a", // 12 characters, one of them a letter
+                "123456 89012", // 12 characters, one of them a space
+                "123456-89012");     // 12 characters, one of them a hyphen
+    }
+
     // ==================== registerUser tests ====================
     @Test
     void GivenValidUnregisteredUser_WhenRegisterUser_ThenUserIsRegistered() {
@@ -111,8 +144,8 @@ public class TestLibrary {
     }
 
     @ParameterizedTest
-    @NullSource
-    @ValueSource(strings = {"", "12345678901", "1234567890123", "12345678901a", "123456 89012", "123456-89012"})
+    @NullAndEmptySource
+    @MethodSource("invalidUserIds")
     void GivenInvalidUserId_WhenRegisterUser_ThenThrowIllegalArgumentException(String invalidId) {
         // Arrange
         when(user.getId()).thenReturn(invalidId);
@@ -164,27 +197,19 @@ public class TestLibrary {
     // ==================== addBook tests ====================
     @Test
     void GivenNullBook_WhenAddBook_ThenThrowIllegalArgumentException() {
-        // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> library.addBook(null));
-
-        // Assert
-        assertEquals("Invalid book.", exception.getMessage());
+        // Act + Assert
+        assertAddBookFails(null, "Invalid book.");
     }
 
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
+    @MethodSource("invalidIsbns")
     void GivenInvalidIsbn_WhenAddBook_ThenThrowIllegalArgumentException(String invalidIsbn) {
         // Arrange
         when(book.getISBN()).thenReturn(invalidIsbn);
 
-        // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> library.addBook(book));
-
-        // Assert
-        assertEquals("Invalid ISBN.", exception.getMessage());
+        // Act + Assert
+        assertAddBookFails(book, "Invalid ISBN.");
     }
 
     @ParameterizedTest
@@ -193,28 +218,32 @@ public class TestLibrary {
         // Arrange
         when(book.getTitle()).thenReturn(title);
 
-        // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> library.addBook(book));
-
-        // Assert
-        assertEquals("Invalid title.", exception.getMessage());
+        // Act + Assert
+        assertAddBookFails(book, "Invalid title.");
     }
 
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {"-nitzan", "Nitzan Zagur*", "Nitzan Za*guri", "Nitz''an Zaguri",
-        "Nitzan Z..aguri", "Nitz--an Zaguri", "Nitzan  Zaguri"})
+    @ValueSource(strings = {
+        "-nitzan", // starts with a special character
+        "Nitzan Zagur*", // ends with an invalid character
+        "Nitzan Zaguri2", // ends with a digit
+        "Nitzan Za*guri", // invalid character in the middle
+        "Nitz4n Zaguri", // digit in the middle
+        "Nitzan Za&guri", // invalid character whose code is below the apostrophe
+        "Nitzan\tZaguri", // tab instead of a space
+        "N*itzan Zaguri", // invalid character right after the first letter
+        "Nitzan Zagur*i", // invalid character right before the last letter
+        "Nitz''an Zaguri", // two consecutive apostrophes
+        "Nitzan Z..aguri", // two consecutive dots
+        "Nitz--an Zaguri", // two consecutive hyphens
+        "Nitzan  Zaguri"})   // two consecutive spaces
     void GivenInvalidAuthor_WhenAddBook_ThenThrowIllegalArgumentException(String invalidAuthor) {
         // Arrange
         when(book.getAuthor()).thenReturn(invalidAuthor);
 
-        // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> library.addBook(book));
-
-        // Assert
-        assertEquals("Invalid author.", exception.getMessage());
+        // Act + Assert
+        assertAddBookFails(book, "Invalid author.");
     }
 
     @Test
@@ -222,12 +251,8 @@ public class TestLibrary {
         // Arrange
         when(book.isBorrowed()).thenReturn(true);
 
-        // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> library.addBook(book));
-
-        // Assert
-        assertEquals("Book with invalid borrowed state.", exception.getMessage());
+        // Act + Assert
+        assertAddBookFails(book, "Book with invalid borrowed state.");
     }
 
     @Test
@@ -235,13 +260,19 @@ public class TestLibrary {
         // Arrange
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
 
-        // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> library.addBook(book));
+        // Act + Assert
+        assertAddBookFails(book, "Book already exists.");
+    }
 
-        // Assert
-        assertEquals("Book already exists.", exception.getMessage());
-        verify(databaseService, never()).addBook(anyString(), any(Book.class));
+    /**
+     * Calls addBook, asserts it throws IllegalArgumentException with the
+     * expected message, and asserts that nothing was saved in the database.
+     */
+    private void assertAddBookFails(Book bookToAdd, String expectedMessage) {
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.addBook(bookToAdd));
+        assertEquals(expectedMessage, exception.getMessage());
+        verify(databaseService, never()).addBook(any(), any());
     }
 
     @Test
@@ -277,10 +308,48 @@ public class TestLibrary {
         verify(databaseService).addBook(VALID_ISBN_WITH_CHECK_DIGIT_ZERO, book);
     }
 
+    @Test
+    void GivenRealWorldIsbn_WhenAddBook_ThenBookIsSavedInDatabase() {
+        // Arrange: a second valid ISBN with a different digit pattern,
+        // so a wrong checksum formula cannot accept both by coincidence
+        when(book.getISBN()).thenReturn(VALID_REAL_WORLD_ISBN);
+
+        // Act
+        library.addBook(book);
+
+        // Assert
+        verify(databaseService).addBook(VALID_REAL_WORLD_ISBN, book);
+    }
+
     @ParameterizedTest
-    @ValueSource(strings = {"Nitzan Zaguri", "Nitzan-Zaguri", "Nitzan.Zaguri", "Nit'zan Zaguri"})
+    @ValueSource(strings = {
+        "A", // shortest possible name: a single letter
+        "Nitzan Zaguri", // space between letters
+        "Nitzan-Zaguri", // hyphen between letters
+        "Nitzan.Zaguri", // dot between letters
+        "Nit'zan Zaguri", // apostrophe between letters
+        "\u00C9mile Zola"})  // non-English letter (E with acute accent)
     void GivenValidAuthor_WhenAddBook_ThenBookIsSavedInDatabase(String validAuthor) {
         // Arrange
+        when(book.getAuthor()).thenReturn(validAuthor);
+
+        // Act
+        library.addBook(book);
+
+        // Assert
+        verify(databaseService).addBook(VALID_ISBN, book);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "Nitzan 'Zaguri", // space then apostrophe
+        "Nitzan' Zaguri", // apostrophe then space
+        "Nitzan -Zaguri", // space then hyphen
+        "Nitzan- Zaguri", // hyphen then space
+        "Nitzan .Zaguri", // space then dot
+        "Nitz-'an Zaguri"})  // hyphen then apostrophe
+    void GivenDifferentAdjacentSpecialChars_WhenAddBook_ThenBookIsSavedInDatabase(String validAuthor) {
+        // Arrange: only identical adjacent special characters are forbidden
         when(book.getAuthor()).thenReturn(validAuthor);
 
         // Act
@@ -293,7 +362,7 @@ public class TestLibrary {
     // ==================== borrowBook tests ====================
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
+    @MethodSource("invalidIsbns")
     void GivenInvalidIsbn_WhenBorrowBook_ThenThrowIllegalArgumentException(String invalidIsbn) {
         // Act
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
@@ -318,7 +387,7 @@ public class TestLibrary {
 
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {"12345678901", "1234567890123", "97803m640615"})
+    @MethodSource("invalidUserIds")
     void GivenInvalidUserId_WhenBorrowBook_ThenThrowIllegalArgumentException(String invalidUserId) {
         // Arrange
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
@@ -382,7 +451,7 @@ public class TestLibrary {
     // ==================== returnBook tests ====================
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
+    @MethodSource("invalidIsbns")
     void GivenInvalidIsbn_WhenReturnBook_ThenThrowIllegalArgumentException(String invalidIsbn) {
         // Act
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
@@ -438,7 +507,7 @@ public class TestLibrary {
     // ==================== getBookByISBN tests ====================
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
+    @MethodSource("invalidIsbns")
     void GivenInvalidIsbn_WhenGetBookByISBN_ThenThrowIllegalArgumentException(String invalidIsbn) {
         // Act
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
@@ -450,7 +519,7 @@ public class TestLibrary {
 
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {"12345678901", "1234567890123", "12345678901a"})
+    @MethodSource("invalidUserIds")
     void GivenInvalidUserId_WhenGetBookByISBN_ThenThrowIllegalArgumentException(String invalidUserId) {
         // Act
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
@@ -563,7 +632,7 @@ public class TestLibrary {
     // ==================== notifyUserWithBookReviews tests ====================
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
+    @MethodSource("invalidIsbns")
     void GivenInvalidIsbn_WhenNotifyUserWithBookReviews_ThenThrowIllegalArgumentException(String invalidIsbn) {
         // Act
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
@@ -575,7 +644,7 @@ public class TestLibrary {
 
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {"12345678901", "1234567890123", "12345678901a"})
+    @MethodSource("invalidUserIds")
     void GivenInvalidUserId_WhenNotifyUserWithBookReviews_ThenThrowIllegalArgumentException(String invalidUserId) {
         // Act
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
@@ -771,5 +840,21 @@ public class TestLibrary {
 
         // Assert
         verify(user, times(5)).sendNotification(EXPECTED_NOTIFICATION);
+    }
+
+    @Test
+    void GivenNotificationFailsWithUnexpectedError_WhenNotifyUserWithBookReviews_ThenDoNotRetry() {
+        // Arrange: only NotificationException triggers a retry; any other error is propagated at once
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenReturn(VALID_REVIEWS);
+        doThrow(new IllegalStateException("Unexpected error")).when(user).sendNotification(anyString());
+
+        // Act
+        assertThrows(IllegalStateException.class,
+                () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        verify(user, times(1)).sendNotification(EXPECTED_NOTIFICATION);
     }
 }
