@@ -1,5 +1,7 @@
 package ac.il.bgu.qa;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
@@ -61,6 +63,10 @@ public class TestLibrary {
     @Mock
     private User user;
 
+    // Console streams, saved so tests that capture output can restore them
+    private final PrintStream originalOut = System.out;
+    private final PrintStream originalErr = System.err;
+
     private AutoCloseable mocks;
     private Library library;
 
@@ -83,6 +89,8 @@ public class TestLibrary {
 
     @AfterEach
     void tearDown() throws Exception {
+        System.setOut(originalOut);
+        System.setErr(originalErr);
         mocks.close();
     }
 
@@ -480,6 +488,21 @@ public class TestLibrary {
     }
 
     @Test
+    void GivenBookAlreadyBorrowed_WhenGetBookByISBN_ThenDoNotNotifyUser() {
+        // Arrange
+        Library spyLibrary = spy(library);
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(book.isBorrowed()).thenReturn(true);
+
+        // Act
+        assertThrows(BookAlreadyBorrowedException.class,
+                () -> spyLibrary.getBookByISBN(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        verify(spyLibrary, never()).notifyUserWithBookReviews(anyString(), anyString());
+    }
+
+    @Test
     void GivenValidIsbnAndUserId_WhenGetBookByISBN_ThenReturnBook() {
         // Arrange
         Library spyLibrary = spy(library);
@@ -519,6 +542,22 @@ public class TestLibrary {
 
         // Assert
         assertSame(book, result);
+    }
+
+    @Test
+    void GivenNotificationFails_WhenGetBookByISBN_ThenPrintNotificationFailed() {
+        // Arrange
+        Library spyLibrary = spy(library);
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        doThrow(new RuntimeException()).when(spyLibrary).notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID);
+        ByteArrayOutputStream outContent = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(outContent));
+
+        // Act
+        spyLibrary.getBookByISBN(VALID_ISBN, VALID_USER_ID);
+
+        // Assert
+        assertEquals("Notification failed!" + System.lineSeparator(), outContent.toString());
     }
 
     // ==================== notifyUserWithBookReviews tests ====================
@@ -587,6 +626,21 @@ public class TestLibrary {
 
         // Assert
         assertEquals("No reviews found!", exception.getMessage());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    void GivenNoReviews_WhenNotifyUserWithBookReviews_ThenCloseReviewService(List<String> reviews) {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenReturn(reviews);
+
+        // Act
+        assertThrows(NoReviewsFoundException.class,
+                () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
         verify(reviewService).close();
     }
 
@@ -603,6 +657,20 @@ public class TestLibrary {
 
         // Assert
         assertEquals("Review service unavailable!", exception.getMessage());
+    }
+
+    @Test
+    void GivenReviewServiceFails_WhenNotifyUserWithBookReviews_ThenCloseReviewService() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenThrow(new ReviewException("Review service failed"));
+
+        // Act
+        assertThrows(ReviewServiceUnavailableException.class,
+                () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
         verify(reviewService).close();
     }
 
@@ -618,6 +686,19 @@ public class TestLibrary {
 
         // Assert
         verify(user).sendNotification(EXPECTED_NOTIFICATION);
+    }
+
+    @Test
+    void GivenValidIsbnAndUserId_WhenNotifyUserWithBookReviews_ThenCloseReviewService() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenReturn(VALID_REVIEWS);
+
+        // Act
+        library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID);
+
+        // Assert
         verify(reviewService).close();
     }
 
@@ -638,6 +719,29 @@ public class TestLibrary {
     }
 
     @Test
+    void GivenNotificationFailsFourTimes_WhenNotifyUserWithBookReviews_ThenPrintRetryMessages() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenReturn(VALID_REVIEWS);
+        NotificationException failure = new NotificationException("Notification service failed");
+        doThrow(failure, failure, failure, failure).doNothing().when(user).sendNotification(anyString());
+        ByteArrayOutputStream errContent = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(errContent));
+        String expectedOutput = String.join(System.lineSeparator(),
+                "Notification failed! Retrying attempt 1/5",
+                "Notification failed! Retrying attempt 2/5",
+                "Notification failed! Retrying attempt 3/5",
+                "Notification failed! Retrying attempt 4/5") + System.lineSeparator();
+
+        // Act
+        library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID);
+
+        // Assert
+        assertEquals(expectedOutput, errContent.toString());
+    }
+
+    @Test
     void GivenNotificationAlwaysFails_WhenNotifyUserWithBookReviews_ThenThrowNotificationException() {
         // Arrange
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
@@ -651,6 +755,21 @@ public class TestLibrary {
 
         // Assert
         assertEquals("Notification failed!", exception.getMessage());
+    }
+
+    @Test
+    void GivenNotificationAlwaysFails_WhenNotifyUserWithBookReviews_ThenStopAfterFiveAttempts() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenReturn(VALID_REVIEWS);
+        doThrow(new NotificationException("Notification service failed")).when(user).sendNotification(anyString());
+
+        // Act
+        assertThrows(NotificationException.class,
+                () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
         verify(user, times(5)).sendNotification(EXPECTED_NOTIFICATION);
     }
 }
