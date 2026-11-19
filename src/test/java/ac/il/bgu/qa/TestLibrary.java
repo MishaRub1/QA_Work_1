@@ -23,11 +23,17 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import java.util.List;
+
 import org.mockito.MockitoAnnotations;
 
 import ac.il.bgu.qa.errors.BookAlreadyBorrowedException;
 import ac.il.bgu.qa.errors.BookNotBorrowedException;
 import ac.il.bgu.qa.errors.BookNotFoundException;
+import ac.il.bgu.qa.errors.NoReviewsFoundException;
+import ac.il.bgu.qa.errors.ReviewException;
+import ac.il.bgu.qa.errors.ReviewServiceUnavailableException;
 import ac.il.bgu.qa.errors.UserNotRegisteredException;
 import ac.il.bgu.qa.services.DatabaseService;
 import ac.il.bgu.qa.services.NotificationService;
@@ -532,9 +538,56 @@ public class TestLibrary {
     void GivenBookNotFound_WhenNotifyUserWithBookReviews_ThenThrowBookNotFoundException() {
         // Arrange
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(null);
+
         // Act
-        BookNotFoundException exception = assertThrows(BookNotFoundException.class, () ->  library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+        BookNotFoundException exception = assertThrows(BookNotFoundException.class, () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
         // Assert
         assertEquals("Book not found!", exception.getMessage());
     }
+
+    @Test
+    void GivenUserNotFound_WhenNotifyUserWithBookReviews_ThenThrowUserNotRegisteredException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(null);
+
+        // Act
+        UserNotRegisteredException exception = assertThrows(UserNotRegisteredException.class, () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        assertEquals("User not found!", exception.getMessage());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    void GivenNoReviews_WhenNotifyUserWithBookReviews_ThenThrowNoReviewsFoundException(List<String> reviews) {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenReturn(reviews);
+
+        // Act
+        NoReviewsFoundException exception = assertThrows(NoReviewsFoundException.class, () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        assertEquals("No reviews found!", exception.getMessage());
+        verify(reviewService).close();
+    }
+
+    @Test  
+    void GivenReviewServiceFails_WhenNotifyUserWithBookReviews_ThenThrowReviewServiceUnavailableException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenThrow(new ReviewException("Review service failed"));
+        
+        // Act
+        ReviewServiceUnavailableException exception = assertThrows(ReviewServiceUnavailableException.class, () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert       
+        assertEquals("Review service unavailable!", exception.getMessage());
+        verify(reviewService).close();
+    }
+    
 }
