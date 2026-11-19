@@ -1,5 +1,7 @@
 package ac.il.bgu.qa;
 
+import java.util.List;
+
 import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -12,15 +14,12 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.booleanThat;
-import static org.mockito.ArgumentMatchers.eq;
-
 import org.mockito.Mock;
-
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.MockitoAnnotations;
@@ -28,6 +27,10 @@ import org.mockito.MockitoAnnotations;
 import ac.il.bgu.qa.errors.BookAlreadyBorrowedException;
 import ac.il.bgu.qa.errors.BookNotBorrowedException;
 import ac.il.bgu.qa.errors.BookNotFoundException;
+import ac.il.bgu.qa.errors.NoReviewsFoundException;
+import ac.il.bgu.qa.errors.NotificationException;
+import ac.il.bgu.qa.errors.ReviewException;
+import ac.il.bgu.qa.errors.ReviewServiceUnavailableException;
 import ac.il.bgu.qa.errors.UserNotRegisteredException;
 import ac.il.bgu.qa.services.DatabaseService;
 import ac.il.bgu.qa.services.NotificationService;
@@ -43,6 +46,8 @@ public class TestLibrary {
     private static final String VALID_AUTHOR = "J.K. Rowling";
     private static final String VALID_USER_ID = "123456789012";
     private static final String VALID_USER_NAME = "Israel Israeli";
+    private static final List<String> VALID_REVIEWS = List.of("Great book", "Loved it");
+    private static final String EXPECTED_NOTIFICATION = "Reviews for '" + VALID_TITLE + "':\nGreat book\nLoved it";
 
     // Test doubles (mocks)
     @Mock
@@ -81,7 +86,7 @@ public class TestLibrary {
         mocks.close();
     }
 
-    // ====================================================== registerUser tests ======================================================
+    // ==================== registerUser tests ====================
     @Test
     void GivenValidUnregisteredUser_WhenRegisterUser_ThenUserIsRegistered() {
         // Act
@@ -137,46 +142,38 @@ public class TestLibrary {
     }
 
     /**
-     * Calls registerUser, asserts it throws IllegalArgumentException with the expected message,
-     * and asserts that nothing was registered in the database.
+     * Calls registerUser, asserts it throws IllegalArgumentException with the
+     * expected message, and asserts that nothing was registered in the
+     * database.
      */
     private void assertRegisterUserFails(User userToRegister, String expectedMessage) {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-            () -> library.registerUser(userToRegister));
+                () -> library.registerUser(userToRegister));
         assertEquals(expectedMessage, exception.getMessage());
         verify(databaseService, never()).registerUser(any(), any());
     }
 
-    // ====================================================== addBook tests ======================================================
+    // ==================== addBook tests ====================
     @Test
     void GivenNullBook_WhenAddBook_ThenThrowIllegalArgumentException() {
         // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.addBook(null));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.addBook(null));
 
         // Assert
         assertEquals("Invalid book.", exception.getMessage());
     }
 
-    @Test
-    void GivenNullIsbn_WhenAddBook_ThenThrowIllegalArgumentException() {
-        // Arrange
-        when(book.getISBN()).thenReturn(null);
-
-        // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.addBook(book));
-
-        // Assert
-        assertEquals("Invalid ISBN.", exception.getMessage());
-    }
-
     @ParameterizedTest
+    @NullAndEmptySource
     @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
     void GivenInvalidIsbn_WhenAddBook_ThenThrowIllegalArgumentException(String invalidIsbn) {
         // Arrange
         when(book.getISBN()).thenReturn(invalidIsbn);
 
         // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.addBook(book));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.addBook(book));
 
         // Assert
         assertEquals("Invalid ISBN.", exception.getMessage());
@@ -189,7 +186,8 @@ public class TestLibrary {
         when(book.getTitle()).thenReturn(title);
 
         // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.addBook(book));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.addBook(book));
 
         // Assert
         assertEquals("Invalid title.", exception.getMessage());
@@ -197,13 +195,15 @@ public class TestLibrary {
 
     @ParameterizedTest
     @NullAndEmptySource
-    @ValueSource(strings = {"-nitzan", "Nitzan Zagur*", "Nitzan ka k** Zaguri", "Nitz''an Zaguri", "Nitzan Z..aguri", "Nitz--an Zaguri", "Nitzan  Zaguri"})
+    @ValueSource(strings = {"-nitzan", "Nitzan Zagur*", "Nitzan Za*guri", "Nitz''an Zaguri",
+        "Nitzan Z..aguri", "Nitz--an Zaguri", "Nitzan  Zaguri"})
     void GivenInvalidAuthor_WhenAddBook_ThenThrowIllegalArgumentException(String invalidAuthor) {
         // Arrange
         when(book.getAuthor()).thenReturn(invalidAuthor);
 
         // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.addBook(book));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.addBook(book));
 
         // Assert
         assertEquals("Invalid author.", exception.getMessage());
@@ -215,7 +215,8 @@ public class TestLibrary {
         when(book.isBorrowed()).thenReturn(true);
 
         // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.addBook(book));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.addBook(book));
 
         // Assert
         assertEquals("Book with invalid borrowed state.", exception.getMessage());
@@ -227,7 +228,8 @@ public class TestLibrary {
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
 
         // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.addBook(book));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.addBook(book));
 
         // Assert
         assertEquals("Book already exists.", exception.getMessage());
@@ -280,13 +282,14 @@ public class TestLibrary {
         verify(databaseService).addBook(VALID_ISBN, book);
     }
 
-    // ====================================================== borrowBook tests ======================================================
+    // ==================== borrowBook tests ====================
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
     void GivenInvalidIsbn_WhenBorrowBook_ThenThrowIllegalArgumentException(String invalidIsbn) {
         // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.borrowBook(invalidIsbn, VALID_USER_ID));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.borrowBook(invalidIsbn, VALID_USER_ID));
 
         // Assert
         assertEquals("Invalid ISBN.", exception.getMessage());
@@ -298,7 +301,8 @@ public class TestLibrary {
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(null);
 
         // Act
-        BookNotFoundException exception = assertThrows(BookNotFoundException.class, () -> library.borrowBook(VALID_ISBN, VALID_USER_ID));
+        BookNotFoundException exception = assertThrows(BookNotFoundException.class,
+                () -> library.borrowBook(VALID_ISBN, VALID_USER_ID));
 
         // Assert
         assertEquals("Book not found!", exception.getMessage());
@@ -312,7 +316,8 @@ public class TestLibrary {
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
 
         // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.borrowBook(VALID_ISBN, invalidUserId));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.borrowBook(VALID_ISBN, invalidUserId));
 
         // Assert
         assertEquals("Invalid user Id.", exception.getMessage());
@@ -325,7 +330,8 @@ public class TestLibrary {
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
 
         // Act
-        UserNotRegisteredException exception = assertThrows(UserNotRegisteredException.class, () -> library.borrowBook(VALID_ISBN, VALID_USER_ID));
+        UserNotRegisteredException exception = assertThrows(UserNotRegisteredException.class,
+                () -> library.borrowBook(VALID_ISBN, VALID_USER_ID));
 
         // Assert
         assertEquals("User not found!", exception.getMessage());
@@ -341,7 +347,8 @@ public class TestLibrary {
         when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
 
         // Act
-        BookAlreadyBorrowedException exception = assertThrows(BookAlreadyBorrowedException.class, () -> library.borrowBook(VALID_ISBN, VALID_USER_ID));
+        BookAlreadyBorrowedException exception = assertThrows(BookAlreadyBorrowedException.class,
+                () -> library.borrowBook(VALID_ISBN, VALID_USER_ID));
 
         // Assert
         assertEquals("Book is already borrowed!", exception.getMessage());
@@ -364,13 +371,14 @@ public class TestLibrary {
         verify(book).borrow();
     }
 
-    // ====================================================== returnBook tests ======================================================
+    // ==================== returnBook tests ====================
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
     void GivenInvalidIsbn_WhenReturnBook_ThenThrowIllegalArgumentException(String invalidIsbn) {
         // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.returnBook(invalidIsbn));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.returnBook(invalidIsbn));
 
         // Assert
         assertEquals("Invalid ISBN.", exception.getMessage());
@@ -382,7 +390,8 @@ public class TestLibrary {
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(null);
 
         // Act
-        BookNotFoundException exception = assertThrows(BookNotFoundException.class, () -> library.returnBook(VALID_ISBN));
+        BookNotFoundException exception = assertThrows(BookNotFoundException.class,
+                () -> library.returnBook(VALID_ISBN));
 
         // Assert
         assertEquals("Book not found!", exception.getMessage());
@@ -395,7 +404,8 @@ public class TestLibrary {
         when(book.isBorrowed()).thenReturn(false);
 
         // Act
-        BookNotBorrowedException exception = assertThrows(BookNotBorrowedException.class, () -> library.returnBook(VALID_ISBN));
+        BookNotBorrowedException exception = assertThrows(BookNotBorrowedException.class,
+                () -> library.returnBook(VALID_ISBN));
 
         // Assert
         assertEquals("Book wasn't borrowed!", exception.getMessage());
@@ -417,13 +427,14 @@ public class TestLibrary {
         verify(book).returnBook();
     }
 
-    // ====================================================== getBookByISBN tests ======================================================
+    // ==================== getBookByISBN tests ====================
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
     void GivenInvalidIsbn_WhenGetBookByISBN_ThenThrowIllegalArgumentException(String invalidIsbn) {
         // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.getBookByISBN(invalidIsbn, VALID_USER_ID));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.getBookByISBN(invalidIsbn, VALID_USER_ID));
 
         // Assert
         assertEquals("Invalid ISBN.", exception.getMessage());
@@ -434,7 +445,8 @@ public class TestLibrary {
     @ValueSource(strings = {"12345678901", "1234567890123", "12345678901a"})
     void GivenInvalidUserId_WhenGetBookByISBN_ThenThrowIllegalArgumentException(String invalidUserId) {
         // Act
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> library.getBookByISBN(VALID_ISBN, invalidUserId));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.getBookByISBN(VALID_ISBN, invalidUserId));
 
         // Assert
         assertEquals("Invalid user Id.", exception.getMessage());
@@ -446,7 +458,8 @@ public class TestLibrary {
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(null);
 
         // Act
-        BookNotFoundException exception = assertThrows(BookNotFoundException.class, () -> library.getBookByISBN(VALID_ISBN, VALID_USER_ID));
+        BookNotFoundException exception = assertThrows(BookNotFoundException.class,
+                () -> library.getBookByISBN(VALID_ISBN, VALID_USER_ID));
 
         // Assert
         assertEquals("Book not found!", exception.getMessage());
@@ -459,7 +472,8 @@ public class TestLibrary {
         when(book.isBorrowed()).thenReturn(true);
 
         // Act
-        BookAlreadyBorrowedException exception = assertThrows(BookAlreadyBorrowedException.class, () -> library.getBookByISBN(VALID_ISBN, VALID_USER_ID));
+        BookAlreadyBorrowedException exception = assertThrows(BookAlreadyBorrowedException.class,
+                () -> library.getBookByISBN(VALID_ISBN, VALID_USER_ID));
 
         // Assert
         assertEquals("Book was already borrowed!", exception.getMessage());
@@ -468,10 +482,12 @@ public class TestLibrary {
     @Test
     void GivenValidIsbnAndUserId_WhenGetBookByISBN_ThenReturnBook() {
         // Arrange
+        Library spyLibrary = spy(library);
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        doNothing().when(spyLibrary).notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID);
 
         // Act
-        Book result = library.getBookByISBN(VALID_ISBN, VALID_USER_ID);
+        Book result = spyLibrary.getBookByISBN(VALID_ISBN, VALID_USER_ID);
 
         // Assert
         assertSame(book, result);
@@ -503,5 +519,138 @@ public class TestLibrary {
 
         // Assert
         assertSame(book, result);
+    }
+
+    // ==================== notifyUserWithBookReviews tests ====================
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"123456789012", "12345678901234", "97803m6406157", "9780306406158"})
+    void GivenInvalidIsbn_WhenNotifyUserWithBookReviews_ThenThrowIllegalArgumentException(String invalidIsbn) {
+        // Act
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.notifyUserWithBookReviews(invalidIsbn, VALID_USER_ID));
+
+        // Assert
+        assertEquals("Invalid ISBN.", exception.getMessage());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"12345678901", "1234567890123", "12345678901a"})
+    void GivenInvalidUserId_WhenNotifyUserWithBookReviews_ThenThrowIllegalArgumentException(String invalidUserId) {
+        // Act
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
+                () -> library.notifyUserWithBookReviews(VALID_ISBN, invalidUserId));
+
+        // Assert
+        assertEquals("Invalid user Id.", exception.getMessage());
+    }
+
+    @Test
+    void GivenBookNotFound_WhenNotifyUserWithBookReviews_ThenThrowBookNotFoundException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(null);
+
+        // Act
+        BookNotFoundException exception = assertThrows(BookNotFoundException.class,
+                () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        assertEquals("Book not found!", exception.getMessage());
+    }
+
+    @Test
+    void GivenUserNotFound_WhenNotifyUserWithBookReviews_ThenThrowUserNotRegisteredException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(null);
+
+        // Act
+        UserNotRegisteredException exception = assertThrows(UserNotRegisteredException.class,
+                () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        assertEquals("User not found!", exception.getMessage());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    void GivenNoReviews_WhenNotifyUserWithBookReviews_ThenThrowNoReviewsFoundException(List<String> reviews) {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenReturn(reviews);
+
+        // Act
+        NoReviewsFoundException exception = assertThrows(NoReviewsFoundException.class,
+                () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        assertEquals("No reviews found!", exception.getMessage());
+        verify(reviewService).close();
+    }
+
+    @Test
+    void GivenReviewServiceFails_WhenNotifyUserWithBookReviews_ThenThrowReviewServiceUnavailableException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenThrow(new ReviewException("Review service failed"));
+
+        // Act
+        ReviewServiceUnavailableException exception = assertThrows(ReviewServiceUnavailableException.class,
+                () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        assertEquals("Review service unavailable!", exception.getMessage());
+        verify(reviewService).close();
+    }
+
+    @Test
+    void GivenValidIsbnAndUserId_WhenNotifyUserWithBookReviews_ThenSendNotificationToUser() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenReturn(VALID_REVIEWS);
+
+        // Act
+        library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID);
+
+        // Assert
+        verify(user).sendNotification(EXPECTED_NOTIFICATION);
+        verify(reviewService).close();
+    }
+
+    @Test
+    void GivenNotificationFailsFourTimes_WhenNotifyUserWithBookReviews_ThenNotificationSentOnFifthAttempt() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenReturn(VALID_REVIEWS);
+        NotificationException failure = new NotificationException("Notification service failed");
+        doThrow(failure, failure, failure, failure).doNothing().when(user).sendNotification(anyString());
+
+        // Act
+        library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID);
+
+        // Assert
+        verify(user, times(5)).sendNotification(EXPECTED_NOTIFICATION);
+    }
+
+    @Test
+    void GivenNotificationAlwaysFails_WhenNotifyUserWithBookReviews_ThenThrowNotificationException() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenReturn(VALID_REVIEWS);
+        doThrow(new NotificationException("Notification service failed")).when(user).sendNotification(anyString());
+
+        // Act
+        NotificationException exception = assertThrows(NotificationException.class,
+                () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
+
+        // Assert
+        assertEquals("Notification failed!", exception.getMessage());
+        verify(user, times(5)).sendNotification(EXPECTED_NOTIFICATION);
     }
 }
