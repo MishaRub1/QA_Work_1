@@ -575,19 +575,34 @@ public class TestLibrary {
         verify(reviewService).close();
     }
 
-    @Test  
+    @Test
     void GivenReviewServiceFails_WhenNotifyUserWithBookReviews_ThenThrowReviewServiceUnavailableException() {
         // Arrange
         when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
         when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
         when(reviewService.getReviewsForBook(VALID_ISBN)).thenThrow(new ReviewException("Review service failed"));
-        
+
         // Act
         ReviewServiceUnavailableException exception = assertThrows(ReviewServiceUnavailableException.class, () -> library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID));
 
-        // Assert       
+        // Assert     
         assertEquals("Review service unavailable!", exception.getMessage());
         verify(reviewService).close();
     }
-    
+
+    @Test
+    void GivenValidIsbnAndUserId_WhenNotifyUserWithBookReviews_ThenSendNotificationToUser() {
+        // Arrange
+        when(databaseService.getBookByISBN(VALID_ISBN)).thenReturn(book);
+        when(databaseService.getUserById(VALID_USER_ID)).thenReturn(user);
+        when(reviewService.getReviewsForBook(VALID_ISBN)).thenReturn(List.of("Great book", "Loved it"));
+        String expectedMessage = "Reviews for '" + VALID_TITLE + "':\nGreat book\nLoved it";
+
+        // Act
+        library.notifyUserWithBookReviews(VALID_ISBN, VALID_USER_ID);
+
+        // Assert
+        verify(user).sendNotification(expectedMessage);
+        verify(reviewService).close();
+    }
 }
