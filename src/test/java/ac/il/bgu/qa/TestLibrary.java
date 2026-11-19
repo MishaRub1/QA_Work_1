@@ -51,7 +51,6 @@ public class TestLibrary {
     private static final String VALID_AUTHOR = "J.K. Rowling";
     private static final String VALID_USER_ID = "123456789012";
     private static final String VALID_USER_NAME = "Israel Israeli";
-    // Arrays.asList (and not List.of) keeps the file compatible with the Java 8 level set in pom.xml
     private static final List<String> VALID_REVIEWS = Arrays.asList("Great book", "Loved it");
     private static final String EXPECTED_NOTIFICATION = "Reviews for '" + VALID_TITLE + "':\nGreat book\nLoved it";
 
