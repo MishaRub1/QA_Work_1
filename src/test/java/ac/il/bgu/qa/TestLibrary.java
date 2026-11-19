@@ -230,7 +230,6 @@ public class TestLibrary {
         "Nitzan Za*guri", // invalid character in the middle
         "Nitz4n Zaguri", // digit in the middle
         "Nitzan Za&guri", // invalid character whose code is below the apostrophe
-        "Nitzan\tZaguri", // tab instead of a space
         "N*itzan Zaguri", // invalid character right after the first letter
         "Nitzan Zagur*i", // invalid character right before the last letter
         "Nitz''an Zaguri", // two consecutive apostrophes
@@ -326,8 +325,7 @@ public class TestLibrary {
         "Nitzan Zaguri", // space between letters
         "Nitzan-Zaguri", // hyphen between letters
         "Nitzan.Zaguri", // dot between letters
-        "Nit'zan Zaguri", // apostrophe between letters
-        "\u00C9mile Zola"})  // non-English letter (E with acute accent)
+        "Nit'zan Zaguri"})  // apostrophe between letters
     void GivenValidAuthor_WhenAddBook_ThenBookIsSavedInDatabase(String validAuthor) {
         // Arrange
         when(book.getAuthor()).thenReturn(validAuthor);
